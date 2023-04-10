@@ -8,14 +8,17 @@ namespace ProductManagerAPI.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class ProductsEFController : ControllerBase
+    public class ProductEFController : ControllerBase
     {
-        DataContextEF _entityFramework;
+        //DataContextEF _entityFramework;
+        IProductRepository _productRepository;
         IMapper _mapper;
 
-        public ProductsEFController(IConfiguration config)
+        public ProductEFController(IConfiguration config, IProductRepository productRepository)
         {
-            _entityFramework = new DataContextEF(config);
+            //_entityFramework = new DataContextEF(config);
+            _productRepository = productRepository;
+
             _mapper = new Mapper(
                 new MapperConfiguration(conf =>
                     {
@@ -28,30 +31,20 @@ namespace ProductManagerAPI.Controllers
         [HttpGet]
         public IEnumerable<Product> GetAllProducts()
         {
-            IEnumerable<Product> products = _entityFramework.Products.ToList<Product>();
+            IEnumerable<Product> products = _productRepository.GetAllProducts();
             return products;
         }
 
         [HttpGet("{productId}")]
         public Product GetProduct(int productId)
         {
-            Product? product = _entityFramework.Products
-                .Where(product => product.ProdId == productId)
-                .FirstOrDefault<Product>();
-
-            if(product != null)
-            {
-                return product;
-            }
-            throw new Exception("Failed to get the product");
+            return _productRepository.GetProduct(productId);
         }
 
         [HttpPut("{productId}")]
         public IActionResult EditProduct(Product product)
         {
-            Product? productDb = _entityFramework.Products
-                .Where(prod => prod.ProdId == product.ProdId)
-                .FirstOrDefault<Product>();
+            Product? productDb = _productRepository.GetProduct(product.ProdId);
 
             if (productDb != null)
             {
@@ -60,21 +53,23 @@ namespace ProductManagerAPI.Controllers
                 productDb.Price = product.Price;
                 productDb.InStock = product.InStock;
 
-                if(_entityFramework.SaveChanges() > 0)
+                if (_productRepository.SaveChanges())
                 {
                     return Ok();
                 }
+                throw new Exception("Failed to update the product");
             }
-            throw new Exception("Failed to update the product");
+            throw new Exception("Failed to get the product");
         }
 
         [HttpPost]
         public IActionResult AddProduct(ProductToAddDto product)
         {
             Product productDb = _mapper.Map<Product>(product);
-            _entityFramework.Add(productDb);
 
-            if (_entityFramework.SaveChanges() > 0)
+            _productRepository.AddEntity<Product>(productDb);
+
+            if (_productRepository.SaveChanges())
             {
                 return Ok();
             }
@@ -85,15 +80,13 @@ namespace ProductManagerAPI.Controllers
         [HttpDelete("{productId}")]
         public IActionResult DeleteProduct(int productId)
         {
-            Product? productDb = _entityFramework.Products
-                .Where(product => product.ProdId == product.ProdId)
-                .FirstOrDefault<Product>();
+            Product? productDb = _productRepository.GetProduct(productId);
 
             if (productDb != null)
             {
-                _entityFramework.Products.Remove(productDb);
+                _productRepository.RemoveEntity<Product>(productDb);
 
-                if (_entityFramework.SaveChanges() > 0)
+                if (_productRepository.SaveChanges())
                 {
                     return Ok();
                 }

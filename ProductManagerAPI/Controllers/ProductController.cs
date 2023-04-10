@@ -7,10 +7,10 @@ namespace ProductManagerAPI.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class ProductsController : ControllerBase
+    public class ProductController : ControllerBase
     {
         DataContextDapper _dapper;
-        public ProductsController(IConfiguration config) 
+        public ProductController(IConfiguration config) 
         {
             _dapper = new DataContextDapper(config);
         }
