@@ -1,10 +1,10 @@
 ﻿namespace ProductManagerAPI.Dtos
 {
-    partial class UserForLoginDto
+    public partial class UserForLoginDto
     {
-        string Email { get; set; }
-        string Password { get; set; }
-        UserForLoginDto()
+        public string Email { get; set; }
+        public string Password { get; set; }
+        public UserForLoginDto()
         {
             Email ??= "";
             Password ??= "";

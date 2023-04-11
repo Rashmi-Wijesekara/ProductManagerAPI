@@ -1,17 +1,17 @@
 ﻿namespace ProductManagerAPI.Dtos
 {
-    partial class UserForRegistrationDto
+    public partial class UserForRegistrationDto
     {
-        string Username { get; set; }
-        string Email { get; set; }
-        string PasswordHash { get; set; }
-        string PasswordSalt { get; set; }
-        UserForRegistrationDto()
+        public string Username { get; set; }
+        public string Email { get; set; }
+        public string Password { get; set; }
+        public string PasswordConfirm { get; set; }
+        public UserForRegistrationDto()
         {
             Username ??= "";
             Email ??= "";
-            PasswordHash ??= "";
-            PasswordSalt ??= "";
+            Password ??= "";
+            PasswordConfirm ??= "";
         }
     }
 }
