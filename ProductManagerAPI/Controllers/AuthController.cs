@@ -1,9 +1,11 @@
-﻿using Microsoft.AspNetCore.Cryptography.KeyDerivation;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.IdentityModel.Tokens;
 using ProductManagerAPI.Data;
 using ProductManagerAPI.Dtos;
+using ProductManagerAPI.Helpers;
 using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -12,16 +14,21 @@ using System.Text;
 
 namespace ProductManagerAPI.Controllers
 {
+    [ApiController]
+    [Route("[controller]")]
+    [Authorize]
+    // jwt token is required
     public class AuthController : ControllerBase
     {
         private readonly DataContextDapper _dapper;
-        private readonly IConfiguration _config;
+        private readonly AuthHelper _authHelper;
         public AuthController(IConfiguration config)
         {
             _dapper = new DataContextDapper(config);
-            _config = config;
+            _authHelper = new AuthHelper(config);
         }
 
+        [AllowAnonymous]
         [HttpPost("Register")]
         public IActionResult Register(UserForRegistrationDto userForRegistration)
         {
@@ -30,7 +37,9 @@ namespace ProductManagerAPI.Controllers
                 string sqlCheckUserExits = "SELECT Email FROM ProductsSchema.Users WHERE Email = '" + userForRegistration.Email + "'";
 
                 IEnumerable<string> existingUsers = _dapper.LoadData<string>(sqlCheckUserExits);
-                if (existingUsers.Count() == 0)
+
+                //if (existingUsers.Count() == 0)
+                if (!existingUsers.Any())
                 {
                     byte[] passwordSalt = new byte[128 / 8];
 
@@ -39,7 +48,7 @@ namespace ProductManagerAPI.Controllers
                         rng.GetNonZeroBytes(passwordSalt);
                     }
 
-                    byte[] passwordHash = GetPasswordHash(userForRegistration.Password, passwordSalt);
+                    byte[] passwordHash = _authHelper.GetPasswordHash(userForRegistration.Password, passwordSalt);
 
                     string sqlAddUser = @"INSERT INTO [ProductsSchema].[Users]
                         (Username, 
@@ -50,13 +59,21 @@ namespace ProductManagerAPI.Controllers
                         userForRegistration.Email +
                         "', @PasswordHash, @PasswordSalt)";
 
-                    List<SqlParameter> sqlParameters = new List<SqlParameter>();
+                    //List<SqlParameter> sqlParameters = new List<SqlParameter>();
+                    List<SqlParameter> sqlParameters = new();
 
-                    SqlParameter passwordHashParameter = new SqlParameter("@PasswordHash", SqlDbType.VarBinary);
-                    passwordHashParameter.Value = passwordHash;
+                    //SqlParameter passwordHashParameter = new("@PasswordHash", SqlDbType.VarBinary);
+                    //passwordHashParameter.Value = passwordHash;
 
-                    SqlParameter passwordSaltParameter = new SqlParameter("@PasswordSalt", SqlDbType.VarBinary);
-                    passwordSaltParameter.Value = passwordSalt;
+                    SqlParameter passwordHashParameter = new("@PasswordHash", SqlDbType.VarBinary)
+                    {
+                        Value = passwordHash
+                    };
+
+                    SqlParameter passwordSaltParameter = new("@PasswordSalt", SqlDbType.VarBinary)
+                    {
+                        Value = passwordSalt
+                    };
 
                     sqlParameters.Add(passwordHashParameter);
                     sqlParameters.Add(passwordSaltParameter);
@@ -72,6 +89,7 @@ namespace ProductManagerAPI.Controllers
             throw new Exception("Mismatched passwords");
         }
 
+        [AllowAnonymous]
         [HttpPost("Login")]
         public IActionResult Login(UserForLoginDto userForLogin)
         {
@@ -85,7 +103,7 @@ namespace ProductManagerAPI.Controllers
             {
                 return StatusCode(401, "Invalid email");
             }
-            byte[] passwordHash = GetPasswordHash(userForLogin.Password, userForLoginConfirmation.PasswordSalt);
+            byte[] passwordHash = _authHelper.GetPasswordHash(userForLogin.Password, userForLoginConfirmation.PasswordSalt);
 
             for (int i = 0; i < passwordHash.Length; i++)
             {
@@ -101,53 +119,19 @@ namespace ProductManagerAPI.Controllers
             return Ok(new Dictionary<string, string>
             {
                 {
-                    "token", CreateToken(userId)
+                    "token", _authHelper.CreateToken(userId)
                 }
             });
         }
 
-        private byte[] GetPasswordHash(string password, byte[] passwordSalt)
+        [HttpGet("RefreshToken")]
+        public string RefreshToken()
         {
-            string passwordSaltPlusString = _config.GetSection("AppSettings:PasswordKey").Value +
-                Convert.ToBase64String(passwordSalt);
+            string sqlGetUserId = @"SELECT UserId FROM ProductsSchema.Users WHERE UserId = '" +
+                User.FindFirst("userId")?.Value + "'";
 
-            byte[] passwordHash = KeyDerivation.Pbkdf2(
-                password: password,
-                salt: Encoding.ASCII.GetBytes(passwordSaltPlusString),
-                prf: KeyDerivationPrf.HMACSHA256,
-                iterationCount: 1000000,
-                numBytesRequested: 256 / 8
-            );
-            return passwordHash;
-        }
-
-        private string CreateToken(int userId)
-        {
-            Claim[] claims = new Claim[]
-            {
-                new Claim("userId", userId.ToString())
-            };
-
-            SymmetricSecurityKey tokenKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(
-                    _config.GetSection("Appsettings:TokenKey").Value!
-                    )
-                );
-            SigningCredentials credentials = new SigningCredentials(
-                tokenKey,
-                SecurityAlgorithms.HmacSha512Signature
-            );
-            SecurityTokenDescriptor descriptor = new SecurityTokenDescriptor()
-            {
-                Subject = new ClaimsIdentity(claims),
-                SigningCredentials = credentials,
-                Expires = DateTime.Now.AddDays(1)
-            };
-
-            JwtSecurityTokenHandler handler = new JwtSecurityTokenHandler();
-            SecurityToken token = handler.CreateToken(descriptor);
-
-            return handler.WriteToken(token);
+            int userId = _dapper.LoadDataSingle<int>(sqlGetUserId);
+            return _authHelper.CreateToken(userId);
         }
     }
 }
